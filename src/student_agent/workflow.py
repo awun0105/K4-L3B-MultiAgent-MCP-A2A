@@ -3,16 +3,19 @@ from __future__ import annotations
 from typing import Any
 
 from .mcp_gateway import EvidenceGateway
+from .specialists import Coordinator
+from .tooling import CaseToolRuntime, load_catalog
 from .trace import TraceWriter
 
 
 async def solve_case(
     case: dict[str, Any], gateway: EvidenceGateway, trace: TraceWriter
 ) -> dict[str, Any]:
-    """Implement the L3B coordinator and specialist-agent workflow here.
+    """Run the L3B coordinator and specialist-agent workflow.
 
-    Include entity resolution, conflict handling and evidence-efficient investigation.
-    The starter kit intentionally does not generate invented fallback answers.
+    Remote MCP tools stay on the original EvidenceGateway. Local analysis tools
+    only rank entities, detect conflicts, calibrate confidence and verify output.
     """
-    del case, gateway, trace
-    raise NotImplementedError("Implement the L3B multi-agent workflow in solve_case()")
+    catalog = await load_catalog(gateway)
+    tools = CaseToolRuntime(gateway, catalog, trace, str(case["case_id"]))
+    return await Coordinator(case, tools, trace).run()

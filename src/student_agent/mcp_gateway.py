@@ -21,10 +21,26 @@ class EvidenceGateway:
         response = await self._session.list_tools()
         return sorted(tool.name for tool in response.tools)
 
+    async def list_tool_specs(self) -> list[dict[str, Any]]:
+        """Return server-advertised tool contracts for safe argument selection."""
+        response = await self._session.list_tools()
+        return [
+            {
+                "name": tool.name,
+                "description": getattr(tool, "description", None),
+                "input_schema": getattr(tool, "inputSchema", None)
+                or getattr(tool, "input_schema", None),
+            }
+            for tool in response.tools
+        ]
+
     async def call(self, tool_name: str, *, case_id: str, **arguments: str) -> dict[str, Any]:
         payload = {"case_id": case_id, **arguments}
         result = await self._session.call_tool(tool_name, arguments=payload)
-        if result.isError:
+        # MCP's wire-model field is camelCase (isError); some client versions
+        # expose a snake_case alias.  Support both without treating a successful
+        # response as a transport failure.
+        if bool(getattr(result, "isError", getattr(result, "is_error", False))):
             message = " ".join(
                 block.text for block in result.content if getattr(block, "text", None)
             )

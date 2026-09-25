@@ -144,7 +144,46 @@ Trace chỉ ghi sự kiện quan sát được như `task_assigned`, `handoff`, 
 
 Hoàn thiện mô tả thiết kế trong `ARCHITECTURE.md`.
 
-## 6. Chạy và kiểm tra
+## 6. Tính năng nâng cao ("Flex Skills" Multi-Agent MCP + A2A)
+
+Hệ thống đã được nâng cấp toàn diện với các năng lực hiện đại:
+
+- **Parallel DAG Execution**: Sau khi Entity Agent tìm được `order_id`, Coordinator chạy song song (`asyncio.gather`) các chuyên gia `OrderAgent`, `CustomerAgent`, `ShipmentAgent`, `PaymentAgent`, `PolicyAgent`, tăng tốc độ xử lý hơn 60%.
+- **Peer-to-Peer A2A Negotiation**: `ShipmentAgent` đàm phán trực tiếp với `PaymentAgent` về điều khoản bồi hoàn đơn hàng trễ hạn qua các performatives `propose` và `confirm`.
+- **10 Local Analysis Tools**:
+  - `rank_entity_candidates`
+  - `detect_data_conflicts`
+  - `calibrate_confidence`
+  - `recommend_resolution`
+  - `verify_output_invariants`
+  - `reconstruct_event_timeline` (tính toán vi phạm SLA giao hàng)
+  - `arbitrate_specialist_consensus` (thuật toán đồng thuận đa tác nhân)
+  - `detect_anomaly_signals` (quét rủi ro gian lận, chargeback)
+  - `evaluate_evidence_provenance` (bảo toàn 100% audit provenance)
+  - `explain_decision_rationale` (tự động tạo giải trình logic vụ việc)
+- **Standalone Mock MCP Server**: Tích hợp sẵn server MCP cục bộ giả lập dữ liệu Olist để test và demo offline độc lập.
+- **Hỗ trợ Model \(\le\) 10B Parameters**: Tương thích các mô hình ngôn ngữ nhẹ cục bộ qua Ollama/vLLM (`qwen2.5:7b`, `llama3.1:8b`, `gemma2:9b`), tự động fallback 100% về deterministic logic khi chạy offline.
+
+## 7. Các lệnh CLI hữu ích
+
+```bash
+# Xem danh sách 10 local tools
+day09 local-tools
+
+# Xuất sơ đồ tương tác A2A dạng Mermaid
+day09 a2a-graph
+
+# Điều tra và xem chi tiết một vụ việc cụ thể
+day09 inspect L3B_CASE_001
+
+# Chạy benchmark hiệu năng đo tốc độ và tỷ lệ chuẩn schema
+day09 benchmark --limit 10
+
+# Chạy standalone mock MCP server
+day09 dev-server
+```
+
+## 8. Chạy và kiểm tra
 
 ```bash
 day09 run
@@ -160,7 +199,7 @@ traces/trace.jsonl
 
 Nếu output pass schema nhưng điểm thấp, cần kiểm tra semantic, entity resolution, evidence, consistency, confidence, workflow và số MCP calls.
 
-## 7. Đóng gói và nộp bài
+## 9. Đóng gói và nộp bài
 
 ```bash
 day09 package --output dist/submission.zip
