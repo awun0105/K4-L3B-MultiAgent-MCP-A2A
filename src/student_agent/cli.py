@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import sys
 from pathlib import Path
+import sys
+
+import httpx2
 
 from .cases import load_case_set
 from .config import Settings
@@ -40,24 +42,54 @@ async def _run(root: Path) -> None:
     trace_path.unlink(missing_ok=True)
     trace = TraceWriter(trace_path, contracts)
 
-    async with connect_gateway(settings.mcp_endpoint, settings.team_api_key, contracts) as gateway:
-        discovered_tools = await gateway.list_tools()
-        if not discovered_tools:
-            raise RuntimeError("MCP Gateway returned no tools")
-        for case_id in case_set.case_ids:
-            case = case_set.cases[case_id]
-            trace.emit(case_id=case_id, event_type="case_received", actor="coordinator")
-            output = await solve_case(case, gateway, trace)
-            contracts.validate_output(output, f"outputs/{case_id}.json")
-            if output.get("case_id") != case_id:
-                raise ValueError(f"solver returned a mismatched case_id for {case_id}")
-            target = output_root / f"{case_id}.json"
-            temporary = target.with_suffix(".json.tmp")
-            temporary.write_text(
-                json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    batch_size = 10
+    case_ids = list(case_set.case_ids)
+    total_cases = len(case_ids)
+
+    # Ensure an active competition run session exists for MCP auditing
+    try:
+        async with httpx2.AsyncClient() as http_client:
+            resp = await http_client.post(
+                f"{settings.competition_api_url}/api/v2/runs",
+                headers={"Authorization": f"Bearer {settings.team_api_key}", "Content-Type": "application/json"},
+                json={"variant_id": "l3b"},
+                timeout=10.0,
             )
-            temporary.replace(target)
-            trace.emit(case_id=case_id, event_type="case_finalized", actor="coordinator")
+            if resp.status_code == 200:
+                run_data = resp.json()
+                print(f"Active run session initialized (expires: {run_data.get('expires_at')})")
+    except Exception as exc:
+        print(f"Notice: run initialization check skipped ({exc})")
+
+    for i in range(0, total_cases, batch_size):
+        chunk = case_ids[i : i + batch_size]
+        for attempt in range(5):
+            try:
+                async with connect_gateway(settings.mcp_endpoint, settings.team_api_key, contracts) as gateway:
+                    discovered_tools = await gateway.list_tools()
+                    if not discovered_tools:
+                        raise RuntimeError("MCP Gateway returned no tools")
+                    for idx, case_id in enumerate(chunk):
+                        case = case_set.cases[case_id]
+                        trace.emit(case_id=case_id, event_type="case_received", actor="coordinator")
+                        output = await solve_case(case, gateway, trace)
+                        contracts.validate_output(output, f"outputs/{case_id}.json")
+                        if output.get("case_id") != case_id:
+                            raise ValueError(f"solver returned a mismatched case_id for {case_id}")
+                        target = output_root / f"{case_id}.json"
+                        temporary = target.with_suffix(".json.tmp")
+                        temporary.write_text(
+                            json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+                        )
+                        temporary.replace(target)
+                        trace.emit(case_id=case_id, event_type="case_finalized", actor="coordinator")
+                        print(f"[{i + idx + 1}/{total_cases}] {case_id} -> {output['assessment']['primary_issue']}")
+                break
+            except Exception as exc:
+                if attempt == 4:
+                    raise
+                print(f"Connection glitch ({exc}), retrying batch in 3s (attempt {attempt + 1}/5)...")
+                await asyncio.sleep(3)
 
 
 def parser() -> argparse.ArgumentParser:
