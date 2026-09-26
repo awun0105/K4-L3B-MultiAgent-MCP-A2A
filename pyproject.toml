@@ -12,6 +12,9 @@ dependencies = [
     "jsonschema[format]>=4.25,<5",
     "mcp>=2,<3",
     "python-dotenv>=1.1,<2",
+    "langgraph>=1.2,<2",
+    "langchain-core>=1.0,<2",
+    "openai>=1.40,<4",
 ]
 
 [project.optional-dependencies]
